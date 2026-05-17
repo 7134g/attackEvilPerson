@@ -63,7 +63,7 @@ func runCollect(cfg *config.Config) {
 }
 
 func runSend(cfg *config.Config) {
-	sender.Run("api.txt", sender.Config{
+	_ = sender.Run("api.txt", sender.Config{
 		BaiduURL:    cfg.BaiduURL,
 		TelNumber:   cfg.TelNumber,
 		TelName:     cfg.TelName,

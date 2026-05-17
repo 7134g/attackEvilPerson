@@ -6,6 +6,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -95,19 +96,25 @@ func Run(keywords []string, outputPath string, cfg Config) error {
 	results := make(chan []string, len(keywords))
 
 	var wg sync.WaitGroup
-	var client *http.Client
 
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		return fmt.Errorf("create cookie jar: %w", err)
+	}
+
+	transport := &http.Transport{}
 	if cfg.Proxy != "" {
 		proxyURL, err := url.Parse(cfg.Proxy)
 		if err != nil {
 			return fmt.Errorf("parse proxy: %w", err)
 		}
-		client = &http.Client{
-			Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)},
-			Timeout:   30 * time.Second,
-		}
-	} else {
-		client = &http.Client{Timeout: 30 * time.Second}
+		transport.Proxy = http.ProxyURL(proxyURL)
+	}
+
+	client := &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
+		Jar:       jar,
 	}
 
 	for i := 0; i < workers; i++ {
@@ -171,7 +178,8 @@ func fetch(client *http.Client, keyword string) ([]string, error) {
 	for page := 0; page < maxPage; page++ {
 		matches, err := fetchPage(client, keyword, page)
 		if err != nil {
-			return nil, err
+			fmt.Printf("关键字 \"%s\" 第%d页请求失败: %v\n", keyword, page, err)
+			continue
 		}
 		allResults = append(allResults, matches...)
 	}
@@ -198,6 +206,10 @@ func fetchPage(client *http.Client, keyword string, page int) ([]string, error) 
 		return nil, err
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
